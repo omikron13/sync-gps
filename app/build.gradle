@@ -1,0 +1,68 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.phil.gpslog'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.phil.gpslog"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    signingConfigs {
+        // A fixed keystore committed to the repo so every CI build is signed with
+        // the SAME key. This is what lets you install an updated APK over the
+        // previous one (Android refuses updates signed by a different key).
+        // Keep this repository PRIVATE.
+        stable {
+            storeFile file("keystore/sync.jks")
+            storePassword "syncsync"
+            keyAlias "sync"
+            keyPassword "syncsync"
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.stable
+        }
+        release {
+            signingConfig signingConfigs.stable
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    buildFeatures {
+        viewBinding false
+    }
+    // Ensure a debug build is signed with the debug keystore so the APK installs directly.
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/NOTICE.md', 'META-INF/LICENSE.md', 'META-INF/DEPENDENCIES']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+
+    // JavaMail (Jakarta Mail) port for Android — SMTP sending
+    implementation 'com.sun.mail:android-mail:1.6.7'
+    implementation 'com.sun.mail:android-activation:1.6.7'
+}
