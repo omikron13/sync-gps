@@ -98,12 +98,18 @@ class SetupActivity : AppCompatActivity() {
         }
     }
 
+    /** Password typed in the field, or the one already saved if the field was left empty. */
+    private fun effectivePassword(): String {
+        val typed = findViewById<EditText>(R.id.inputAppPassword).text.toString().replace(" ", "").trim()
+        return if (typed.isNotEmpty()) typed else Prefs.appPassword(this)
+    }
+
     private fun saveAndStart() {
         val from = findViewById<EditText>(R.id.inputFromEmail).text.toString().trim()
-        val pass = findViewById<EditText>(R.id.inputAppPassword).text.toString().trim()
+        val pass = effectivePassword()
         val to = findViewById<EditText>(R.id.inputToEmail).text.toString().trim()
         if (from.isEmpty() || pass.isEmpty() || to.isEmpty()) {
-            toast("Remplis les 3 champs email")
+            toast("Remplis les 3 champs email (dont le mot de passe d'application)")
             return
         }
         Prefs.save(this, from, pass, to)
@@ -115,24 +121,53 @@ class SetupActivity : AppCompatActivity() {
 
     private fun sendTestEmail() {
         val from = findViewById<EditText>(R.id.inputFromEmail).text.toString().trim()
-        val pass = findViewById<EditText>(R.id.inputAppPassword).text.toString().trim()
+        val pass = effectivePassword()
         val to = findViewById<EditText>(R.id.inputToEmail).text.toString().trim()
         if (from.isEmpty() || pass.isEmpty() || to.isEmpty()) {
-            toast("Remplis les 3 champs email")
+            toast("Remplis les 3 champs email (dont le mot de passe d'application)")
+            status.text = "Impossible d'envoyer : il manque l'adresse d'envoi, le mot de passe d'application ou le destinataire."
             return
         }
         toast("Envoi du mail de test…")
+        status.text = "Envoi du mail de test en cours… (jusqu'à 30 s)"
         Thread {
             val points = PointStore.readAll(this)
             val gpx = GpxBuilder.build(points)
-            val ok = try {
+            val result: String = try {
                 EmailSender.sendGpx(from, pass, to, gpx, points)
-            } catch (e: Exception) {
-                runOnUiThread { toast("Échec: ${e.message}") }
-                false
+                "MAIL DE TEST ENVOYÉ à $to — vérifie ta boîte (et les spams)."
+            } catch (t: Throwable) {
+                "ÉCHEC DE L'ENVOI :\n" + describe(t)
             }
-            if (ok) runOnUiThread { toast("Mail de test envoyé à $to") }
+            runOnUiThread {
+                status.text = result
+                toast(if (result.startsWith("MAIL")) "Mail envoyé" else "Échec — voir le détail à l'écran")
+            }
         }.start()
+    }
+
+    /** Full error chain, so the exact cause can be read on screen (and screenshotted). */
+    private fun describe(t: Throwable): String {
+        val sb = StringBuilder()
+        var cur: Throwable? = t
+        var depth = 0
+        while (cur != null && depth < 5) {
+            sb.append(cur.javaClass.simpleName).append(": ").append(cur.message ?: "(sans message)").append("\n")
+            cur = cur.cause
+            depth++
+        }
+        val msg = sb.toString()
+        val hint = when {
+            msg.contains("535") || msg.contains("Username and Password not accepted", true) ->
+                "→ Identifiants refusés par Gmail : utilise un MOT DE PASSE D'APPLICATION (16 lettres, " +
+                "myaccount.google.com/apppasswords), pas le mot de passe du compte. La validation en 2 étapes doit être active."
+            msg.contains("UnknownHost", true) || msg.contains("Unable to resolve host", true) ->
+                "→ Pas de connexion Internet au moment du test."
+            msg.contains("Could not connect", true) || msg.contains("timed out", true) || msg.contains("ECONNREFUSED", true) ->
+                "→ Connexion SMTP impossible (ports 587 et 465) : le réseau bloque peut-être l'envoi. Essaie en Wi-Fi ou en 4G."
+            else -> ""
+        }
+        return msg + hint
     }
 
     private fun hideIcon() {
@@ -160,6 +195,7 @@ class SetupActivity : AppCompatActivity() {
         status.text = buildString {
             append("Localisation: ").append(if (fine) "OK" else "manquante").append("\n")
             append("Arrière-plan: ").append(if (bg) "OK" else "manquante").append("\n")
+            append("Mot de passe d'application: ").append(if (Prefs.appPassword(this@SetupActivity).isNotEmpty()) "enregistré" else "ABSENT").append("\n")
             append("Suivi actif: ").append(if (running) "OUI" else "non").append("\n")
             append("Points en attente d'envoi: ").append(stored)
         }

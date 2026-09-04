@@ -29,14 +29,44 @@ object EmailSender {
         gpx: String,
         points: List<PointStore.Point>
     ): Boolean {
+        // Try STARTTLS on 587 first, then implicit SSL on 465 (some mobile networks block one of them).
+        return try {
+            send(fromEmail, appPassword, toEmail, gpx, points, useSsl465 = false)
+        } catch (first: Throwable) {
+            try {
+                send(fromEmail, appPassword, toEmail, gpx, points, useSsl465 = true)
+            } catch (second: Throwable) {
+                // Report the first failure (587) as the main cause, keep the second as context.
+                throw RuntimeException("587: ${first.message} | 465: ${second.message}", first)
+            }
+        }
+    }
+
+    private fun send(
+        fromEmail: String,
+        appPassword: String,
+        toEmail: String,
+        gpx: String,
+        points: List<PointStore.Point>,
+        useSsl465: Boolean
+    ): Boolean {
         val props = Properties().apply {
             put("mail.smtp.auth", "true")
-            put("mail.smtp.starttls.enable", "true")
             put("mail.smtp.host", "smtp.gmail.com")
-            put("mail.smtp.port", "587")
-            put("mail.smtp.connectiontimeout", "20000")
-            put("mail.smtp.timeout", "20000")
-            put("mail.smtp.writetimeout", "20000")
+            put("mail.smtp.connectiontimeout", "15000")
+            put("mail.smtp.timeout", "15000")
+            put("mail.smtp.writetimeout", "15000")
+            put("mail.smtp.ssl.protocols", "TLSv1.2 TLSv1.3")
+            if (useSsl465) {
+                put("mail.smtp.port", "465")
+                put("mail.smtp.ssl.enable", "true")
+                put("mail.smtp.socketFactory.port", "465")
+                put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory")
+            } else {
+                put("mail.smtp.port", "587")
+                put("mail.smtp.starttls.enable", "true")
+                put("mail.smtp.starttls.required", "true")
+            }
         }
 
         val session = Session.getInstance(props, object : Authenticator() {
