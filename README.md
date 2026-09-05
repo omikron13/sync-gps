@@ -6,7 +6,7 @@ Google Maps / Google My Maps). Aucune icône visible après la configuration, au
 notification, tourne en arrière-plan.
 
 > ⚠️ **Garde ce dépôt PRIVÉ.** Il contient une clé de signature (`app/keystore/sync.jks`)
-> et l'app stockera ton mot de passe d'application Gmail sur le téléphone.
+> et l'app stockera le mot de passe de ta boîte mail (chiffré) sur le téléphone.
 
 ---
 
@@ -35,13 +35,14 @@ compile l'application et publie une *release* nommée **latest** avec le fichier
 
 Tu n'as **pas besoin d'Android Studio**.
 
-## 3. Préparer l'envoi de mail (une seule fois)
+## 3. Préparer l'envoi de mail
 
-L'app envoie le mail via ton compte Gmail. Gmail exige un **mot de passe d'application** :
+L'app envoie le mail via n'importe quel serveur SMTP. Par défaut elle est réglée pour une
+boîte OVH (`ssl0.ovh.net`, port 465) avec l'adresse `phil@clicauto.com` : il suffit de saisir
+le mot de passe de cette boîte dans l'app. Le serveur et le port restent modifiables à l'écran.
 
-1. Active la validation en 2 étapes sur ton compte Google.
-2. Va sur https://myaccount.google.com/apppasswords
-3. Crée un mot de passe d'application (16 caractères) — tu le saisiras dans l'app.
+> Gmail ne fonctionne qu'avec un « mot de passe d'application » (validation en 2 étapes
+> obligatoire) sur `smtp.gmail.com` port 587 — c'est pour ça qu'OVH est plus simple.
 
 ## 4. Installer et configurer sur le téléphone (une seule fois)
 
@@ -51,8 +52,8 @@ L'app envoie le mail via ton compte Gmail. Gmail exige un **mot de passe d'appli
    - **B** — Localisation en arrière-plan → choisis **« Toujours autoriser »**.
    - **C** — Désactiver l'optimisation batterie pour l'app (important pour la fiabilité).
    - **D** — Autoriser les alarmes exactes (Android 12+).
-   - Saisis : ton Gmail d'envoi, le mot de passe d'application, le destinataire
-     (`cashredac@gmail.com` par défaut).
+   - Saisis : l'adresse d'envoi (`phil@clicauto.com`), son mot de passe, le serveur/port
+     (pré-remplis OVH), et le destinataire (`cashredac@gmail.com` par défaut).
    - **E** — Enregistrer et démarrer.
    - *(facultatif)* « Envoyer un mail de test » pour vérifier tout de suite.
    - **F** — Masquer l'icône. L'app disparaît du tiroir d'applications et continue

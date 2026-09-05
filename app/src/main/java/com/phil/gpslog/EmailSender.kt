@@ -17,53 +17,62 @@ import javax.mail.internet.MimeMultipart
 import javax.mail.util.ByteArrayDataSource
 
 /**
- * Sends the GPX track by email over Gmail SMTP using an app-specific password.
+ * Sends the GPX track by email over any SMTP server (default: OVH, ssl0.ovh.net).
+ * Username = the full sender email address.
  * Must run on a background thread (called from the alarm receiver, off the main thread).
  */
 object EmailSender {
 
     fun sendGpx(
         fromEmail: String,
-        appPassword: String,
+        password: String,
         toEmail: String,
+        smtpHost: String,
+        smtpPort: Int,
         gpx: String,
         points: List<PointStore.Point>
     ): Boolean {
-        // Try STARTTLS on 587 first, then implicit SSL on 465 (some mobile networks block one of them).
+        // Port 465 = implicit SSL ; anything else (587, 25) = STARTTLS.
+        val primarySsl = smtpPort == 465
         return try {
-            send(fromEmail, appPassword, toEmail, gpx, points, useSsl465 = false)
+            send(fromEmail, password, toEmail, smtpHost, smtpPort, primarySsl, gpx, points)
         } catch (first: Throwable) {
+            // Fallback: try the other classic port/mode in case the network blocks one of them.
+            val altPort = if (primarySsl) 587 else 465
             try {
-                send(fromEmail, appPassword, toEmail, gpx, points, useSsl465 = true)
+                send(fromEmail, password, toEmail, smtpHost, altPort, !primarySsl, gpx, points)
             } catch (second: Throwable) {
-                // Report the first failure (587) as the main cause, keep the second as context.
-                throw RuntimeException("587: ${first.message} | 465: ${second.message}", first)
+                throw RuntimeException(
+                    "$smtpHost:$smtpPort → ${first.message} | $smtpHost:$altPort → ${second.message}",
+                    first
+                )
             }
         }
     }
 
     private fun send(
         fromEmail: String,
-        appPassword: String,
+        password: String,
         toEmail: String,
+        host: String,
+        port: Int,
+        useSsl: Boolean,
         gpx: String,
-        points: List<PointStore.Point>,
-        useSsl465: Boolean
+        points: List<PointStore.Point>
     ): Boolean {
         val props = Properties().apply {
             put("mail.smtp.auth", "true")
-            put("mail.smtp.host", "smtp.gmail.com")
+            put("mail.smtp.host", host)
+            put("mail.smtp.port", port.toString())
             put("mail.smtp.connectiontimeout", "15000")
             put("mail.smtp.timeout", "15000")
             put("mail.smtp.writetimeout", "15000")
             put("mail.smtp.ssl.protocols", "TLSv1.2 TLSv1.3")
-            if (useSsl465) {
-                put("mail.smtp.port", "465")
+            if (useSsl) {
                 put("mail.smtp.ssl.enable", "true")
-                put("mail.smtp.socketFactory.port", "465")
+                put("mail.smtp.socketFactory.port", port.toString())
                 put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory")
             } else {
-                put("mail.smtp.port", "587")
                 put("mail.smtp.starttls.enable", "true")
                 put("mail.smtp.starttls.required", "true")
             }
@@ -71,7 +80,7 @@ object EmailSender {
 
         val session = Session.getInstance(props, object : Authenticator() {
             override fun getPasswordAuthentication(): PasswordAuthentication =
-                PasswordAuthentication(fromEmail, appPassword)
+                PasswordAuthentication(fromEmail, password)
         })
 
         val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.FRANCE).format(Date())

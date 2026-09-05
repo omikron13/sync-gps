@@ -33,6 +33,8 @@ class SetupActivity : AppCompatActivity() {
 
         findViewById<EditText>(R.id.inputFromEmail).setText(Prefs.fromEmail(this))
         findViewById<EditText>(R.id.inputToEmail).setText(Prefs.toEmail(this))
+        findViewById<EditText>(R.id.inputSmtpHost).setText(Prefs.smtpHost(this))
+        findViewById<EditText>(R.id.inputSmtpPort).setText(Prefs.smtpPort(this).toString())
 
         findViewById<Button>(R.id.btnGrantPermissions).setOnClickListener { requestForeground() }
         findViewById<Button>(R.id.btnBackgroundPermission).setOnClickListener { requestBackground() }
@@ -100,19 +102,39 @@ class SetupActivity : AppCompatActivity() {
 
     /** Password typed in the field, or the one already saved if the field was left empty. */
     private fun effectivePassword(): String {
-        val typed = findViewById<EditText>(R.id.inputAppPassword).text.toString().replace(" ", "").trim()
+        val typed = findViewById<EditText>(R.id.inputAppPassword).text.toString()
         return if (typed.isNotEmpty()) typed else Prefs.appPassword(this)
     }
 
-    private fun saveAndStart() {
+    private data class MailConfig(
+        val from: String, val pass: String, val to: String, val host: String, val port: Int
+    )
+
+    /** Reads and validates the form; returns null (and explains on screen) if incomplete. */
+    private fun readMailConfig(): MailConfig? {
         val from = findViewById<EditText>(R.id.inputFromEmail).text.toString().trim()
         val pass = effectivePassword()
         val to = findViewById<EditText>(R.id.inputToEmail).text.toString().trim()
-        if (from.isEmpty() || pass.isEmpty() || to.isEmpty()) {
-            toast("Remplis les 3 champs email (dont le mot de passe d'application)")
-            return
+        val host = findViewById<EditText>(R.id.inputSmtpHost).text.toString().trim()
+        val port = findViewById<EditText>(R.id.inputSmtpPort).text.toString().trim().toIntOrNull()
+        val missing = mutableListOf<String>()
+        if (from.isEmpty()) missing.add("adresse d'envoi")
+        if (pass.isEmpty()) missing.add("mot de passe")
+        if (to.isEmpty()) missing.add("destinataire")
+        if (host.isEmpty()) missing.add("serveur SMTP")
+        if (port == null || port !in 1..65535) missing.add("port (nombre, ex. 465)")
+        if (missing.isNotEmpty()) {
+            val msg = "Il manque : " + missing.joinToString(", ")
+            toast(msg)
+            status.text = msg
+            return null
         }
-        Prefs.save(this, from, pass, to)
+        return MailConfig(from, pass, to, host, port!!)
+    }
+
+    private fun saveAndStart() {
+        val cfg = readMailConfig() ?: return
+        Prefs.save(this, cfg.from, cfg.pass, cfg.to, cfg.host, cfg.port)
         Prefs.setLastSend(this, System.currentTimeMillis())
         Scheduler.start(this)
         toast("Enregistré. Suivi démarré.")
@@ -120,22 +142,15 @@ class SetupActivity : AppCompatActivity() {
     }
 
     private fun sendTestEmail() {
-        val from = findViewById<EditText>(R.id.inputFromEmail).text.toString().trim()
-        val pass = effectivePassword()
-        val to = findViewById<EditText>(R.id.inputToEmail).text.toString().trim()
-        if (from.isEmpty() || pass.isEmpty() || to.isEmpty()) {
-            toast("Remplis les 3 champs email (dont le mot de passe d'application)")
-            status.text = "Impossible d'envoyer : il manque l'adresse d'envoi, le mot de passe d'application ou le destinataire."
-            return
-        }
+        val cfg = readMailConfig() ?: return
         toast("Envoi du mail de test…")
-        status.text = "Envoi du mail de test en cours… (jusqu'à 30 s)"
+        status.text = "Envoi du mail de test en cours via ${cfg.host}:${cfg.port}… (jusqu'à 30 s)"
         Thread {
             val points = PointStore.readAll(this)
             val gpx = GpxBuilder.build(points)
             val result: String = try {
-                EmailSender.sendGpx(from, pass, to, gpx, points)
-                "MAIL DE TEST ENVOYÉ à $to — vérifie ta boîte (et les spams)."
+                EmailSender.sendGpx(cfg.from, cfg.pass, cfg.to, cfg.host, cfg.port, gpx, points)
+                "MAIL DE TEST ENVOYÉ à ${cfg.to} via ${cfg.host}:${cfg.port} — vérifie ta boîte (et les spams)."
             } catch (t: Throwable) {
                 "ÉCHEC DE L'ENVOI :\n" + describe(t)
             }
@@ -159,8 +174,8 @@ class SetupActivity : AppCompatActivity() {
         val msg = sb.toString()
         val hint = when {
             msg.contains("535") || msg.contains("Username and Password not accepted", true) ->
-                "→ Identifiants refusés par Gmail : utilise un MOT DE PASSE D'APPLICATION (16 lettres, " +
-                "myaccount.google.com/apppasswords), pas le mot de passe du compte. La validation en 2 étapes doit être active."
+                "→ Identifiants refusés par le serveur : vérifie l'adresse d'envoi (c'est l'identifiant SMTP, adresse complète) " +
+                "et le mot de passe de cette boîte. Pour Gmail, il faudrait un mot de passe d'application."
             msg.contains("UnknownHost", true) || msg.contains("Unable to resolve host", true) ->
                 "→ Pas de connexion Internet au moment du test."
             msg.contains("Could not connect", true) || msg.contains("timed out", true) || msg.contains("ECONNREFUSED", true) ->
@@ -195,7 +210,7 @@ class SetupActivity : AppCompatActivity() {
         status.text = buildString {
             append("Localisation: ").append(if (fine) "OK" else "manquante").append("\n")
             append("Arrière-plan: ").append(if (bg) "OK" else "manquante").append("\n")
-            append("Mot de passe d'application: ").append(if (Prefs.appPassword(this@SetupActivity).isNotEmpty()) "enregistré" else "ABSENT").append("\n")
+            append("Mot de passe: ").append(if (Prefs.appPassword(this@SetupActivity).isNotEmpty()) "enregistré" else "ABSENT").append("\n")
             append("Suivi actif: ").append(if (running) "OUI" else "non").append("\n")
             append("Points en attente d'envoi: ").append(stored)
         }

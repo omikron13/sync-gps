@@ -92,8 +92,10 @@ class LocationAlarmReceiver : BroadcastReceiver() {
         val ok = try {
             EmailSender.sendGpx(
                 fromEmail = Prefs.fromEmail(context),
-                appPassword = Prefs.appPassword(context),
+                password = Prefs.appPassword(context),
                 toEmail = Prefs.toEmail(context),
+                smtpHost = Prefs.smtpHost(context),
+                smtpPort = Prefs.smtpPort(context),
                 gpx = gpx,
                 points = points
             )
